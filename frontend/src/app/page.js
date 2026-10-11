@@ -5,7 +5,6 @@ import VideoUploader from "@/components/VideoUploader";
 import StatsOverview from "@/components/StatsOverview";
 import VideoCalibrator from "@/components/VideoCalibrator";
 import { Play, Loader2 } from "lucide-react";
-import { uploadVideoForDetection } from "@/lib/api";
 
 export default function Dashboard() {
   const [file, setFile] = useState(null);
@@ -19,12 +18,41 @@ export default function Dashboard() {
     setIsProcessing(true);
 
     try {
-      const data = await uploadVideoForDetection(file, calibrationPoints);
-      setOutputVideoUrl(data.videoUrl);
-      setStats(data.stats);
+      // 1. Pack the video file and ROI calibration points into FormData
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("source_points", JSON.stringify(calibrationPoints));
+
+      // 2. Send request to the live AWS EC2 backend
+      const response = await fetch("https://random-words-here.trycloudflare.com/process-video", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned HTTP ${response.status}`);
+      }
+
+      const res = await response.json();
+
+      if (res.status === "success") {
+        // Update vehicle analytics stats returned from YOLO
+        setStats({
+          totalVehicles: res.data.totalVehicles,
+          maxSpeed: res.data.maxSpeed,
+          violations: res.data.violations,
+        });
+
+        // Set video URL if returned by backend
+        if (res.data.videoUrl) {
+          setOutputVideoUrl(res.data.videoUrl);
+        }
+      } else {
+        alert("Processing completed with an unexpected response.");
+      }
     } catch (err) {
       console.error("Error processing video:", err);
-      alert("Failed to process video. Check the backend console for errors.");
+      alert("Failed to process video. Check the backend console or app.log.");
     } finally {
       setIsProcessing(false);
     }
@@ -49,14 +77,16 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         <div className="space-y-6">
-          
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-white">1. Upload Footage</h2>
-            <VideoUploader onFileSelect={(f) => {
-              setFile(f);
-              setCalibrationPoints([]); // Reset points if user changes video
-              setOutputVideoUrl(null);
-            }} isLoading={isProcessing} />
+            <VideoUploader 
+              onFileSelect={(f) => {
+                setFile(f);
+                setCalibrationPoints([]); // Reset points if user changes video
+                setOutputVideoUrl(null);
+              }} 
+              isLoading={isProcessing} 
+            />
           </div>
 
           {file && (
@@ -69,12 +99,12 @@ export default function Dashboard() {
           <button
             onClick={handleStartInference}
             disabled={!file || calibrationPoints.length !== 4 || isProcessing}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 transition"
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 transition cursor-pointer"
           >
             {isProcessing ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Processing (Check Python Terminal)...
+                Processing (Check EC2 Terminal)...
               </>
             ) : (
               <>

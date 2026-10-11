@@ -24,7 +24,7 @@ export default function Dashboard() {
       formData.append("source_points", JSON.stringify(calibrationPoints));
 
       // 2. Send request to the live AWS EC2 backend
-      const response = await fetch("https://tigers-functional-css-broadcasting.trycloudflare.com/process-video", {
+      const response = await fetch("https://baffle-swoosh-clumsily.ngrok-free.dev/process-video", {
         method: "POST",
         body: formData,
       });
